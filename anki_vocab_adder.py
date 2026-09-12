@@ -1,18 +1,15 @@
 """
 Anki Vocab Adder
 -----------------
-Look up words via Gemini (meaning + example sentence) and push them straight
-into your Anki deck via AnkiConnect - fully automatic. Words already in the
-deck are detected and skipped (no duplicates). Fix any wording afterward
-directly inside Anki.
+Look up words via an AI provider (meaning + example sentence), generate
+pronunciation audio, and push everything straight into your Anki deck via
+AnkiConnect - fully automatic. Words already in the deck are detected and
+skipped (no duplicates). Fix any wording afterward directly inside Anki.
 
 SETUP (one time):
 1. Anki must be open, with the AnkiConnect add-on installed (code: 2055492159)
-2. pip install requests
-3. Set your Gemini API key as an environment variable before running:
-   Windows (PowerShell):  $env:GEMINI_API_KEY="your_key_here"
-   Windows (cmd):         set GEMINI_API_KEY=your_key_here
-   Mac/Linux:             export GEMINI_API_KEY="your_key_here"
+2. pip install requests gTTS
+3. Create api_key.txt next to this script with your API key (see PROVIDER below)
 4. Run:  python anki_vocab_adder.py
 
 Edit DECK_NAME / MODEL_NAME below if you want different settings.
@@ -21,12 +18,15 @@ Edit DECK_NAME / MODEL_NAME below if you want different settings.
 import os
 import json
 import time
+import base64
+import tempfile
 import requests
 import tkinter as tk
 from tkinter import messagebox
+from gtts import gTTS
 
 # ---------- CONFIG ----------
-DECK_NAME = "Vocabulary"
+DECK_NAME = "Lektion 3"
 MODEL_NAME = "Basic"  # or "Basic (and reversed card)"
 ANKI_CONNECT_URL = "http://localhost:8765"
 
@@ -39,7 +39,7 @@ PROVIDER = "gemini"
 MODEL_BY_PROVIDER = {
     "gemini": "gemini-flash-latest",   # alias - always points to Google's current fast model
     "openai": "gpt-4o-mini",
-    "claude": "claude-haiku-4-5",
+    "claude": "claude-haiku-4-5-20251001",
 }
 
 # API keys: checks an environment variable first (GEMINI_API_KEY / OPENAI_API_KEY /
@@ -200,15 +200,68 @@ def get_word_info(word, max_retries=4):
     raise last_error
 
 
+def generate_pronunciation_audio(text_to_speak, cache_key):
+    """
+    Generates German audio for `text_to_speak` using gTTS, uploads it to
+    Anki's media folder via AnkiConnect, and returns the Anki sound tag
+    (e.g. "[sound:anki_vocab_ai_word.mp3]") to embed in a card field.
+    `cache_key` is used to build a stable filename (so re-adding the same
+    word/sentence doesn't create duplicate media files).
+    Returns None if generation/upload fails (card still gets added without audio).
+    """
+    try:
+        tts = gTTS(text=f"... {text_to_speak}", lang="de")
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+            tts.save(tmp.name)
+            tmp_path = tmp.name
+
+        with open(tmp_path, "rb") as f:
+            audio_bytes = f.read()
+        os.remove(tmp_path)
+
+        safe_name = "".join(c for c in cache_key if c.isalnum())[:40]
+        filename = f"anki_vocab_ai_{safe_name}.mp3"
+
+        anki_request(
+            "storeMediaFile",
+            filename=filename,
+            data=base64.b64encode(audio_bytes).decode("utf-8"),
+        )
+        return f"[sound:{filename}]"
+    except Exception:
+        return None  # non-fatal - card still gets added, just without audio
+
+
 def add_card_to_anki(word, meaning, sentence):
     """Returns 'added', 'duplicate', or raises on a real error."""
     ensure_deck_exists(DECK_NAME)
+
+    # Check for a duplicate first (matches on the plain word, before any audio
+    # tag is added) so we don't waste time generating audio for skipped words.
+    probe_note = {
+        "deckName": DECK_NAME,
+        "modelName": MODEL_NAME,
+        "fields": {"Front": word, "Back": ""},
+    }
+    can_add = anki_request("canAddNotes", notes=[probe_note])
+    if can_add and not can_add[0]:
+        return "duplicate"
+
+    speak_word = word.split("/")[0].strip()  # clean base form for gendered pairs
+    word_sound = generate_pronunciation_audio(speak_word, cache_key=word)
+    front_field = f"{word} {word_sound}" if word_sound else word
+
+    sentence_sound = generate_pronunciation_audio(sentence, cache_key=sentence)
+    sentence_html = f"<i>{sentence}</i>"
+    if sentence_sound:
+        sentence_html += f" {sentence_sound}"
+
     note = {
         "deckName": DECK_NAME,
         "modelName": MODEL_NAME,
         "fields": {
-            "Front": word,
-            "Back": f"{meaning}<br><br><i>{sentence}</i>",
+            "Front": front_field,
+            "Back": f"{meaning}<br><br>{sentence_html}",
         },
         "tags": ["auto-gemini"],
         "options": {"allowDuplicate": False},
