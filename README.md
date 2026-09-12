@@ -12,6 +12,7 @@ Currently tuned for **German vocabulary** (A1 level): the meaning comes back in 
 - **Multiple API keys with fallback** — list several keys in `api_key.txt` (one per line); if one runs out of quota, the script automatically tries the next
 - **Multi-provider support** — works with Google Gemini, OpenAI, or Anthropic Claude. Switch providers by changing a single line in the script
 - **Failed word tracking** — anything that couldn't be added is listed clearly at the end, with a one-click retry button
+- **Pronunciation audio** — generates spoken audio for both the word and its example sentence (via free Google TTS) and embeds a playable speaker icon on the Front and Back of each card
 - **Simple GUI** — no terminal interaction needed once set up; a small popup window handles everything
 
 ## Requirements
@@ -25,9 +26,9 @@ Currently tuned for **German vocabulary** (A1 level): the meaning comes back in 
 
 ## Setup
 
-1. Install the required Python package:
+1. Install the required Python packages:
    ```
-   pip install requests
+   pip install requests gTTS
    ```
 
 2. Make sure Anki is open, with AnkiConnect installed. Test it by visiting `http://localhost:8765` in a browser while Anki is running — it should show `{"apiVersion": "AnkiConnect v.6"}`.
@@ -71,7 +72,8 @@ A few settings near the top of the script you can customize:
 
 ## Notes
 
-- This tool assumes input words are **German**. To adapt it for another language, edit the prompt inside `build_request()`.
+- This tool assumes input words are **German**. To adapt it for another language, edit the prompt inside `build_request()`, and change `lang="de"` in `generate_pronunciation_audio()` to the target language code.
+- Pronunciation audio uses [gTTS](https://pypi.org/project/gTTS/), which requires an internet connection but no API key. If audio generation fails for any reason, the card still gets added — just without sound.
 - `api_key.txt` is excluded from version control via `.gitignore` — never commit your API key.
 - Card wording can always be fixed afterward directly inside Anki's card editor.
 
