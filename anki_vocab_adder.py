@@ -80,11 +80,12 @@ _current_key_index = 0  # which key in API_KEYS we're currently using
 
 def build_request(word):
     """Returns (url, headers, json_body) for the current PROVIDER."""
-    prompt = (
+      prompt = (
         f"The word '{word}' is German. Give:\n"
         f"1. A concise English definition/meaning of the word.\n"
-        f"2. One very simple example sentence in German, written for an A1 (beginner) "
-        f"learner — short, common vocabulary, present tense if possible.\n"
+        f"2. One example sentence in German that sounds natural, like something "
+        f"a person would actually say in real conversation — not a stiff textbook "
+        f"sentence. Keep it A1 level: short, common vocabulary, present tense.\n"
         f"Respond ONLY with raw JSON, no markdown, no backticks, in this exact format: "
         f'{{"meaning": "...", "sentence": "..."}}'
     )
